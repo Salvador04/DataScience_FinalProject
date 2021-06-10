@@ -1,0 +1,23 @@
+Name	Stored As	Type	Details (units, levels, etc.)
+id	integer	(nominal)	ID #, nominal and uninteresting
+age	integer	quantitative	age, in years - no decimal places
+agec	factor (5)	(ordinal)	age: 35-40, 41-45, 46-50, 51-55, 56-60
+height	integer	quantitative	height, in inches
+weight	integer	quantitative	weight, in pounds
+lnwght	number	quantitative	natural logarithm of weight
+wghtcat	factor (4)	(ordinal)	wt: < 140, 140-170, 170-200, > 200
+bmi	number	quantitative	body-mass index: 703 * weight in lb / (height in in)2
+sbp	integer	quantitative	systolic blood pressure, in mm Hg
+lnsbp	number	quantitative	natural logarithm of sbp
+dbp	integer	quantitative	diastolic blood pressure, mm Hg
+chol	integer	quantitative	total cholesterol, mg/dL
+behpat	factor (4)	(nominal)	behavioral pattern: A1, A2, B3 or B4
+dibpat	factor (2)	(binary)	behavioral pattern: A or B
+smoke	factor (2)	(binary)	cigarette smoker: Yes or No
+ncigs	integer	quantitative	number of cigarettes smoked per day
+arcus	integer	(nominal)	arcus senilis present (1) or absent (0)
+chd69	factor (2)	(binary)	CHD event: Yes or No
+typchd69	integer	(4 levels)	event: 0 = no CHD, 1 = MI or SD, 2 = silent MI, 3 = angina
+time169	integer	quantitative	follow-up time in days
+t1	number	quantitative	heavy-tailed (random draws)
+uni	number	quantitative	light-tailed (random draws)
