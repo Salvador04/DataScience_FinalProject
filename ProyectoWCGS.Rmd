@@ -1,0 +1,533 @@
+---
+title: "ProyectoDataScience"
+output: html_document
+---
+
+```{r,message=FALSE}
+library(ggplot2)
+library(reshape2)
+library(tidyverse)
+library(dplyr)
+library(e1071) # asimetria
+library(plyr)
+library(fitdistrplus) # grafica Cullen-Frey
+library(dslabs) # datos PCA
+library(factoextra) # graficas PCA
+library(purrr)
+library(bestNormalize)
+library(car)
+library(ggiraph)
+library(predict3d)
+library(grid)
+library(gridExtra)
+require(nortest)
+```
+
+# Limpieza de datos
+
+Abrimos el archivo y observamos los campos que se encuentran en nuestros datos.
+
+```{r}
+# Abrir el archivo de datos
+setwd("D:/Archivos")
+WCGS <- read.csv("wcgs.csv")
+head(WCGS)
+```
+
+En contramos que los campos son:
+
+- id Subject ID:
+
+- age0 Age: age in years
+
+- height0 Height: height in inches
+
+- weight0 Weight: weight in pounds
+
+- sbp0 Systolic blood pressure: mm Hg
+
+- dbp0 Diastolic blood pressure: mm Hg
+
+- chol0 Cholesterol: mg/100 ml
+
+- behpat0 Behavior pattern:
+
+- ncigs0 Smoking: Cigarettes/day
+
+- dibpat0 Dichotomous behavior pattern: 0 = Type B; 1 = Type A
+
+- chd69 Coronary heart disease event: 0 = none; 1 = yes
+
+- typechd to be done
+
+- time169 Observation (follow up) time: Days
+
+- arcus0 Corneal arcus: 0 = none; 1 = yes
+
+## Datos faltantes
+
+Ante estos datos primero que nada deberemos realizar una limpieza de los datos faltantes, esto con el propósito de evitar que se genere ruido en nuestros datos.
+
+Para esto haremos un comparativo entre la longitud del dataframe antes de omitir datos faltantes y despues.
+
+```{r}
+# Datos antes de omitir faltantes
+length(WCGS$age)
+```
+
+```{r}
+# Datos despues de eliminar faltantes
+WCGS <- na.omit(WCGS)
+length(WCGS$age)
+```
+
+Una vez que realizamos el comparativo podemos observar que se perdieron un total de 53 datos que faltaban en el dataframe.
+
+## Limpieza de valores extremos
+
+En este caso realizaremos un boxplot de las multiples variables cuantitativas en los datos, estas variables seran:
+
+- Colesterol
+- Peso
+- Edad
+- Altura
+- Presión sístolica
+- Presión diastólica
+
+```{r,warning=FALSE}
+# Matriz para el layout
+x <- c(1, 2, 3) # tres gráficos diferentes
+m <- matrix(x, ncol = 2)
+
+nf <- layout(m)
+
+# Plot de variable respuesta
+Plot1 <- ggplot(WCGS, aes(x = chd69, y = weight)) + 
+  geom_boxplot(colour=c("green","blue")) +
+  labs(title = "Boxplot del peso relacionado con la \nenfermedad coronaria ", x = "Enfermedad Coronaria", y = "Peso") + theme(plot.title = element_text(size=7.5))
+
+# Plot de variable predictora 1
+Plot2 <- ggplot(WCGS, aes(x = chd69, y = height)) + 
+  geom_boxplot(colour=c("green","blue")) +
+  labs(title = "Boxplot de la altura relacionada con la \nenfermedad coronaria ", x = "Enfermedad Coronaria", y = "Altura") + theme(plot.title = element_text(size=7.5))
+
+# Plot de variable predictora 2
+Plot3 <- ggplot(WCGS, aes(x = chd69, y = chol)) + 
+  geom_boxplot(colour=c("green","blue")) +
+  labs(title = "Boxplot del colesterol relacionado con la \nenfermedad coronaria ", x = "Enfermedad Coronaria", y = "Colesterol") 
+
+
+
+Plots <- list(Plot1,Plot2,Plot3)
+
+layout <- rbind(c(1,2),c(3))
+
+grid.arrange(grobs = Plots,layout_matrix = layout)
+```
+
+De acuerdo con la información del estudio las medidas se realizaron mediante el uso del sistema ingles, por este motivo tendremos que darle una interpretación que nos arrojan estos datos.
+
+- Peso: En este caso observamos que las personas con mayor peso se encuentran en una medición de 320 libras y los de menor en 100 libras, lo cual es equivalente a 145kg y 45kg respectivamente. De modo que, en este campo consideramos que si bien hay personas con bajo peso y personas obesas, consideramos que los datos no son tan extremos como para descartarlo.
+
+- Altura: En este caso observamos que las personas con mayor altura se encuentran en una medición de 79 pulgadas y los de menor en 60 pulgadas, lo cual es equivalente a 2 metros y 1.52 metros. De modo que, en este campo consideramos que la altura no presenta ruido en los datos.
+
+- Colesterol: En este caso encontramos personas en las que se anoto una cantidad de colesterol muy grande cercana a 600 por este motivo consideramos que lo mas adecuado es retirar estos datos, estableciendo un punto de corte en 400 que es donde observamos el agrupamiento.
+
+```{r,warning=FALSE}
+# Matriz para el layout
+x <- c(1, 2, 3) # tres gráficos diferentes
+m <- matrix(x, ncol = 2)
+
+nf <- layout(m)
+
+# Plot de variable predictora 3
+Plot4 <- ggplot(WCGS, aes(x = chd69, y = sbp)) + 
+  geom_boxplot(colour=c("green","blue")) +
+  labs(title = "Boxplot de la P.sistólica relacionada con la \nenfermedad coronaria ", x = "Enfermedad Coronaria", y = "Presión sistolica") + theme(plot.title = element_text(size=7.5))
+
+# Plot de variable predictora 3
+Plot5 <- ggplot(WCGS, aes(x = chd69, y = dbp)) + 
+  geom_boxplot(colour=c("green","blue")) +
+  labs(title = "Boxplot de la P.diastólica relacionada \ncon enfermedad coronaria ", x = "Enfermedad Coronaria", y = "Presión diastolica") + theme(plot.title = element_text(size=7.5))
+
+# Plot de variable predictora 3
+Plot6 <- ggplot(WCGS, aes(x = chd69, y = age)) + 
+  geom_boxplot(colour=c("green","blue")) +
+  labs(title = "Boxplot de la edad relacionada \ncon enfermedad coronaria ", x = "Enfermedad Coronaria", y = "Edad") 
+
+Plots <- list(Plot4,Plot5,Plot6)
+
+layout <- rbind(c(1,2),c(3))
+
+grid.arrange(grobs = Plots,layout_matrix = layout)
+```
+
+En este apartado podemos observar que lo indicado por el articulo es concordante con los datos pues todos los pacientes anotados se encuentran en un rango de edad de 39 a 60 años. Por otra parte se encontraron valores altos y bajos en las presiones sistolica y diastolica, pero no fueron tan extremos como para considerar limpiarlos.
+
+Eliminamos los datos extremos de colesterol.
+
+```{r}
+newChol <- (WCGS$chol <= 400)
+WCGS <- WCGS[newChol,]
+length(WCGS$age)
+```
+
+# Visualización de datos
+
+```{r}
+Values <- data.frame(Edad = as.numeric(WCGS$age), IMC = as.numeric(WCGS$bmi),Altura = as.numeric(WCGS$height), Coronaria = WCGS$chd69, Colesterol = as.numeric(WCGS$chol))
+head(Values)
+```
+
+```{r}
+max(Values$IMC)
+min(Values$IMC)
+```
+
+## Categorizar datos
+
+Para unas graficas mas entendibles categorizaremos los datos colocados en nuestro nuevo data frame.
+
+```{r}
+################## Categorizar pesos #################
+obex <- Values["IMC"] > 39.9
+obeso <- (Values["IMC"] > 29.9) & (Values["IMC"] <= 39.9)
+sobrep <- (Values["IMC"] > 24.9) & (Values["IMC"] <= 29.9)
+Norm <- (Values["IMC"] > 18.5) & (Values["IMC"] <= 24.9)
+bajo <- Values["IMC"] <= 18.5
+
+Values["IMC"][obex] <- "Extremo"
+Values["IMC"][obeso] <- "obeso"
+Values["IMC"][sobrep] <- "Sobrepeso"
+Values["IMC"][Norm] <- "Normal"
+Values["IMC"][bajo] <- "Bajo"
+
+################## Categorizar altura #################
+Bajo <- Values["Altura"] <= 65
+Promedio <- (Values["Altura"] > 65) & (Values["Altura"] < 71)
+Alto <- Values["Altura"] >= 71
+
+Values["Altura"][Bajo] <- "Bajo"
+Values["Altura"][Promedio] <- "Normal"
+Values["Altura"][Alto] <- "Alto"
+
+################## Categorizar edad #################
+Adulto <- Values["Edad"] <= 45
+Mayor <- (Values["Edad"] > 45) & (Values["Edad"] < 55)
+Viejo <- Values["Edad"] >= 55
+
+Values["Edad"][Adulto] <- "Adulto"
+Values["Edad"][Mayor] <- "Adulto mayor"
+Values["Edad"][Viejo] <- "Viejo"
+
+################ Categorizar colesterol ###################
+CNorm <- Values["Colesterol"] <= 200
+CNAlt <- (Values["Colesterol"] > 200) & (Values["Colesterol"] < 240)
+CAlt <- Values["Colesterol"] >= 240
+
+Values["Colesterol"][CNorm] <- "Normal"
+Values["Colesterol"][CNAlt] <- "Normal-Alto"
+Values["Colesterol"][CAlt] <- "Alto"
+
+head(Values)
+```
+
+```{r}
+# Realizar conteo de categorias
+table(Values$IMC)
+IMC <- table(Values$IMC)
+IMC <- as.data.frame(IMC)
+
+table(Values$Colesterol)
+Colesterol <- table(Values$Colesterol)
+Colesterol <- as.data.frame(Colesterol)
+
+table(Values$Altura)
+Altura <- table(Values$Altura)
+Altura <- as.data.frame(Altura)
+
+table(Values$Edad)
+Edad <- table(Values$Edad)
+Edad <- as.data.frame(Edad)
+```
+
+## Graficar categorias
+
+Por medio de recursos graficos observaremos como se encuentran distribuidos los pacientes del dataset de acuerdo a sus caracteristicas.
+
+```{r}
+# Matriz para el layout
+x <- c(1, 2) # cuatro gráficos diferentes
+m <- matrix(x, ncol = 2)
+
+nf <- layout(m)
+
+# Plot de variable respuesta
+Plot1 <- ggplot(IMC, aes(x = Var1, y = Freq, fill = c("Bajo","Normal", "Obeso","Sobrepeso"))) +
+  geom_bar(stat = "identity") + labs(title = "Número de Pacientes pertenecientes a cada \ngrupo de IMC", x = "Nivel de IMC", y = "Número de pacientes") + theme(axis.ticks.x = element_blank(), axis.text.x=element_blank()) + guides(fill=guide_legend(title="Nivel IMC")) + theme(legend.key.size = unit(0.2,"line"))
+
+# Plot de variable predictora 1
+Plot2 <- ggplot(Colesterol, aes(x = Var1, y = Freq, fill = c("Alto","Normal", "Normal-Alto"))) +
+  geom_bar(stat = "identity") + labs(title = "Número de Pacientes pertenecientes a cada \ngrupo de Colesterol", x = "Nivel de Colesterol", y = "Número de pacientes") + theme(axis.ticks.x = element_blank(), axis.text.x=element_blank()) + guides(fill=guide_legend(title="Nivel Colesterol")) +  theme(legend.key.size = unit(0.2,"line"))
+
+
+Plots <- list(Plot1,Plot2)
+
+layout <- rbind(c(1,2))
+
+grid.arrange(grobs = Plots,layout_matrix = layout)
+```
+
+```{r}
+
+# Matriz para el layout
+x <- c(1, 2) # cuatro gráficos diferentes
+m <- matrix(x, ncol = 2)
+
+nf <- layout(m)
+
+# Plot de variable predictora 2
+Plot3 <- ggplot(Altura, aes(x = Var1, y = Freq, fill = c("Alto","Bajo","Normal"))) +
+  geom_bar(stat = "identity") + labs(title = "Número de Pacientes pertenecientes a cada \ngrupo de Altura", x = "Nivel de Altura", y = "Número de pacientes") + theme(axis.ticks.x = element_blank(), axis.text.x=element_blank()) + guides(fill=guide_legend(title="Nivel Altura")) +  theme(legend.key.size = unit(0.2,"line"))
+
+# Plot de variable predictora 3
+Plot4 <- ggplot(Edad, aes(x = Var1, y = Freq, fill = c("Adulto","Adulto M", "Viejo"))) +
+  geom_bar(stat = "identity") + labs(title = "Número de Pacientes pertenecientes a cada \ngrupo de Edad", x = "Nivel de Edad", y = "Número de pacientes") + theme(axis.ticks.x = element_blank(), axis.text.x=element_blank()) + guides(fill=guide_legend(title="Grupo de Edad")) +  theme(legend.key.size = unit(0.2,"line"))
+
+
+Plots <- list(Plot3,Plot4)
+
+layout <- rbind(c(1,2))
+
+grid.arrange(grobs = Plots,layout_matrix = layout)
+
+```
+
+Ahora pensamos que el colesterol alto puede estar muy relacionado con el desarrollo de una enfermedad coronaria.
+
+```{r}
+# Realizar el conteo cardiovascular dependiendo del nivel de colesterol
+Group <- tapply(Values$Colesterol, 
+                  list(Values$Colesterol, Values$Coronaria),
+                  table)
+
+Group <- as.data.frame(Group)
+Group$Colesterol <- rownames(Group)
+Group
+```
+
+```{r}
+# Generar el formato long del dataframe
+Group <- reshape(Group, #Objeto a transformar
+        direction = "long", #Necesitamos formato long
+        varying = list(names(Group)[1:2]), #Las columnas a alargar (las que tienen las cuentas) son la 1 y la 2
+        v.names = "Counts", #Las cuentas se almacenaran en la columna "Counts"
+        idvar = "Colesterol", #La variable con los identificadores del grupo de actividad fisica
+        timevar = "Coronaria", #Variable que vamos a alargar, que corresponde a las columnas "no" y "yes"
+        times = c("no", "yes"))
+row.names(Group) <- NULL
+Group
+```
+
+```{r}
+# Barplot que refleja los niveles de colesterol dependiendo el grupo
+ggplot(Group, aes(x = Colesterol, y = Counts, fill = Coronaria)) +
+  geom_bar(stat = "identity", position=position_dodge()) + labs(title = "Número de Pacientes pertenecientes a cada \ngrupo de colesterol y enfermedad cardiovascular", x = "Nivel de colesterol", y = "Número de pacientes") + scale_fill_discrete(name = "Cardiovascular", labels = c("Ausencia", "Presencia"))
+```
+
+# Regresion Lineal
+
+En el articulo donde se realizo el estudio, se indicaba una asociacion entre la enfermedad coronaria con la conducta que presentaban los pacientes.
+
+## Normalidad IMC
+
+Trataremos de predecir el peso de un paciente unicamente utilizando el valor del IMC con el proposito de determinar que tan preciso es el analisis de regresion con una sola variable, para esto debemos observar si hay normalidad en los datos. Para conocer esto utilizaremos una grafica cuantil-cuantil y la prueba de Shapiro.
+
+```{r}
+shapiro.test(WCGS$bmi)
+```
+
+```{r}
+shapiro.test(WCGS$weight)
+```
+
+```{r}
+# Matriz para el layout
+x <- c(1, 2) # cuatro gráficos diferentes
+m <- matrix(x, ncol = 2)
+
+nf <- layout(m)
+
+Plot1 <- ggplot(WCGS, aes(sample = bmi)) + 
+  stat_qq(alpha = 0.5) + 
+  stat_qq_line(color = "red") + 
+  labs(title = "Grafica cuantil-cuantil IMC", x = "Teoréticos", y = "Muestra")
+
+Plot2 <- ggplot(WCGS, aes(sample = weight)) + 
+  stat_qq(alpha = 0.5) + 
+  stat_qq_line(color = "blue") + 
+  labs(title = "Grafica cuantil-cuantil Peso", x = "Teoréticos", y = "Muestra")
+
+Plots <- list(Plot1,Plot2)
+
+layout <- rbind(c(1,2))
+
+grid.arrange(grobs = Plots,layout_matrix = layout)
+
+```
+
+Como podemos observar tanto el test grafico cuantil-cuantil nos indican que los datos no estan normalizados, por este motivo debemos normalizarlos. Pero, como es un modelo predictivo solo sera necesario normalizar la variable resultado.
+
+```{r}
+# Normalizar los datos
+set.seed(42)
+bestNormalize(WCGS$weight)
+```
+
+Una vez que ejecutamos el algoritmo podemos ver que el metodo recomendado es OrderNorm por lo que normalizamos el peso y ahora ya podemos ejecutar nuestro modelo de regresión para predecir esta variable a partir del IMC.
+
+```{r}
+# Guardar datos normalizados
+bestnorm <- bestNormalize(WCGS$weight)
+WCGS$NormPeso <- bestnorm$x.t
+head(bestnorm$x.t)
+```
+
+```{r}
+ggplot(WCGS, aes(sample = NormPeso)) + 
+  stat_qq(alpha = 0.5) + 
+  stat_qq_line(color = "green") + 
+  labs(title = "Grafica cuantil-cuantil Peso", x = "Teoréticos", y = "Muestra")
+```
+
+```{r}
+modelo <- lm(data = WCGS, NormPeso ~ bmi)
+summary(modelo)
+```
+
+Gracias a esto podemos establecer el modelo lineal y obtener los coeficientes de la ecuación. En este caso vemos que el valor P es mucho menor a 0.05, por lo que podemos determinar que el modelo es confiable. Los coeficientes indican que la regresión seria.
+
+Cabe destacar que tambien se obtuvo una buena R-ajustada de 0.6318 el cual es mas cercano a 1 que a 0 y nos indica que el modelo es bueno.
+
+$$
+y = 0.309329x -7.583944
+$$
+
+Graficamos para observar el modelo de regresión con respecto a los datos.
+
+```{r}
+ggplot(WCGS, aes(bmi, NormPeso)) + 
+  geom_point() +
+  geom_smooth(method = lm) +
+  labs(title = "Grafica de dispersion entre IMC y peso con datos normalizados", x = "IMC", y = "Peso")
+```
+
+Ahora graficamos los residuales para ver que tanto se dispersan los datos de lo predicho.
+
+```{r}
+WCGS$Lresiduals <- modelo$residuals
+WCGS$Lpredicted <- modelo$fitted.values
+
+ggplot(WCGS, aes(x = bmi, y = NormPeso)) +
+  geom_smooth(method = lm) +  # añadimos la linea de regresion 
+  geom_segment(aes(xend = bmi, yend = Lpredicted)) +  # esto añade las lineas de distancia 
+  geom_point(aes(y = Lpredicted)) +  # agregamos los puntos de los valores predichos
+  geom_point(color = "red") +  # agregamos los puntos de las observaciones en color rojo
+  labs(title = "Grafica de residuales", x = "IMC", y = "Peso")
+```
+
+El grafico de los residuales nos permitio darnos cuanta que los valores no poseen outliers que pudieran arruinar el modelo, ademas de que la distancia de los residuos no difiere mucho entre los datos.
+
+```{r}
+WCGS$index <- 1:nrow(WCGS)
+ggplot(WCGS, aes(x = index, y = Lresiduals)) + 
+  geom_point() +
+  labs(title = "Grafica de residuales", x = "Índice", y = "Residuales")
+```
+
+Se logra observar bastante dispersión en los residuales lo cual da confianza respecto a nuestro modelo de regresión lineal.
+
+# Regresión múltiple
+
+```{r}
+table(WCGS["chd69"])
+```
+
+```{r}
+WCGS$Colesterol <- Values$Colesterol
+WCGS$Edad <- Values$Edad
+WCGS["chd69"][WCGS["chd69"] == "No"] <- 0
+WCGS["chd69"][WCGS["chd69"] == "Yes"] <- 1
+```
+
+
+```{r}
+modelo_multiple <- lm(data = WCGS , NormPeso ~ age + height + sbp + dbp + chol + behpat + bmi + dibpat + smoke )
+summary(modelo_multiple)
+```
+
+```{r}
+# Generar grafico multivariable
+ggplot(WCGS, aes(x = bmi, y = NormPeso, color = Colesterol)) +
+  geom_smooth(method = lm) +  # añadimos la linea de regresion 
+  geom_point(aes(shape = as.factor(smoke))) +  # agregamos los puntos de las observaciones en color rojo
+  labs(title = "Modelo lineal de variables significativas", x = "IMC", y = "Peso Normalizado", color = "Colesterol", shape = "Fuma")
+```
+
+```{r}
+# Generar grafico multivariable
+ggplot(WCGS, aes(x = sbp, y = NormPeso, color = behpat)) +
+  geom_smooth(method = lm) +  # añadimos la linea de regresion 
+  geom_point(aes(shape = as.factor(Edad))) +  # agregamos los puntos de las observaciones en color rojo
+  labs(title = "Modelo lineal de variables no significativas", x = "Sistolica", y = "Peso Normalizado", color = "Conducta", shape = "Edad")
+```
+
+# Regresión logística
+
+```{r}
+# Verificar tipo de dato
+typeof(WCGS$chd69)
+```
+
+
+```{r}
+# Conversion numerica
+WCGS$chd69 <- as.numeric(WCGS$chd69)
+# Modelo logistico
+modelo_logistico1 <- glm(data = WCGS, chd69 ~ bmi, family = "binomial")
+summary(modelo_logistico1)
+```
+
+```{r}
+# Grafico de modelo logistico
+ggplot(WCGS, aes(x=bmi, y=(chd69))) + 
+  geom_point(alpha=.5) +
+  stat_smooth(method = glm, se = FALSE, method.args = list(family = binomial)) + labs(title = "Grafica de dispersion entre Coronaria y IMC", x = "IMC", y = "Coronaria")
+```
+
+```{r}
+# Conversion numerica
+WCGS$chd69 <- as.numeric(WCGS$chd69)
+# Modelo logistico
+modelo_logistico2 <- glm(data = WCGS, chd69 ~ chol, family = "binomial")
+summary(modelo_logistico2)
+```
+
+```{r}
+# Grafico de modelo logistico
+ggplot(WCGS, aes(x=chol, y=(chd69))) + 
+  geom_point(alpha=.5) +
+  stat_smooth(method = glm, se = FALSE, method.args = list(family = binomial)) + labs(title = "Grafica de dispersion entre Coronaria y Colesterol", x = "Colesterol", y = "Coronaria")
+```
+
+# Regresión logistica múltiple
+
+```{r}
+modelo_logistico_mult <- glm(data = WCGS, chd69 ~  age + height + weight + sbp + dbp + chol + behpat + bmi + dibpat + smoke , family = "binomial")
+summary(modelo_logistico_mult)
+```
+
+
+
+
+
