@@ -334,6 +334,139 @@ Group
 ggplot(Group, aes(x = Colesterol, y = Counts, fill = Coronaria)) +
   geom_bar(stat = "identity", position=position_dodge()) + labs(title = "Número de Pacientes pertenecientes a cada \ngrupo de colesterol y enfermedad cardiovascular", x = "Nivel de colesterol", y = "Número de pacientes") + scale_fill_discrete(name = "Cardiovascular", labels = c("Ausencia", "Presencia"))
 ```
+## Analizis de la varianza
+
+Debido a lo anterior, hemos decidido analizar si la diferencia del nivel de colesterol, entre pacientes sanos y enfermos, es significativa. 
+
+```{r}
+# Importar la libreria requerida para realizar la codificacion de datos
+library(qdap)
+```
+
+```{r}
+# Establecer un tipo de variable valido para la categoria de genero, para no tener errores
+WCGS$chd69 <- multigsub(sort(unique(WCGS$chd69)), c("Ausencia", "Presencia"), WCGS$chd69)
+table(WCGS$chd69)
+```
+
+Como se puede observar, los dos conjuntos (sanos y enfermos) tienen tamaños distintos. A continuación, voy a analizar la distribución de cada uno.
+
+```{r}
+# Calcular el promedio de cada conjunto
+aggregate(chol~chd69, data = WCGS, FUN = mean)
+```
+
+En promedio, los pacientes sanos tienen menor nivel de colesterol que los pacientes enfermos, en este conjunto de datos.
+
+```{r}
+# Calcular la desviacion estandar de cada conjunto
+aggregate(chol~chd69, data = WCGS, FUN = sd)
+```
+
+La desviación estándar en ambos conjuntos es similar, lo cual podría darnos indicios de que comparten la misma distribución. A continuación, voy a aplicar el test **Lilliefors** para evaluar de forma analítica la normalidad en ambos conjuntos. Escogí esta prueba ya que es la alternativa a **Shapiro-Wilk** cuando el número de observaciones es mayor de 50, como es el caso. La Hipótesis nula (H0) de esta prueba es que la muestra tiene una distribución normal, y la hipótesis alternativa (HA) sería que las muestras no tienen una distribución normal. Por lo tanto, si el p-valor es menor a 0.05 se puede rechazar la H0 y aceptar la hipótesis alternativa.
+
+```{r}
+# Separar los datos por genero en estructuras distintas
+healthy <- WCGS[WCGS$chd69=="Ausencia",]
+sick <- WCGS[WCGS$chd69=="Presencia",]
+
+# Comprobar la normalidad de nuestros datos
+lillie.test(healthy$chol)
+lillie.test(sick$chol)
+```
+
+El p-valor de la prueba Lillefors aplicada en el conjunto de individuos sanos es menor a 0.05, lo cual indica que su distribución definitivamente no es normal. Sin embargo, el p-valor de la misma prueba, pero aplicada en el conjunto de pacientes enfermos, es mayor a 0.05, y por ello podemos asegurar que los datos siguen una distribución normal. Podemos dibujar las gráficas cuantil-cualtil de ambos conjuntos para comprobar lo anterior.
+
+```{r}
+# Matriz para el layout
+x <- c(1, 2) # dos gráficos diferentes
+m <- matrix(x, ncol = 2)
+nf <- layout(m)
+
+Plot1 <- ggplot(healthy, aes(sample = chol)) + 
+  stat_qq(alpha = 0.5) + 
+  stat_qq_line(color = "red") + 
+  labs(title = "Colesterol en pacientes sanos", x = "Teoréticos", y = "Muestra")
+
+Plot2 <- ggplot(sick, aes(sample = chol)) + 
+  stat_qq(alpha = 0.5) + 
+  stat_qq_line(color = "blue") + 
+  labs(title = "Colesterol en pacientes enfermos", x = "Teoréticos", y = "Muestra")
+
+Plots <- list(Plot1,Plot2)
+layout <- rbind(c(1,2))
+grid.arrange(grobs = Plots,layout_matrix = layout)
+```
+
+Como podemos observar, el nivel de colesterol en los pacientes sanos no siguen una distribución normal, y por este motivo debemos normalizarlos. 
+
+```{r}
+# Normalizar los datos
+set.seed(42)
+healthy$NormChol <- bestNormalize(healthy$chol)$x.t
+
+# Comprobar la normalidad de nuestros datos
+lillie.test(healthy$NormChol)
+```
+
+De nuevo los valores del colesterol en pacientes sanos no siguen una distribución normal, pues el p-valor de la prueba Lilliefors aplicada en los valores normalizados sigue siendo menor a 0.05. Podemos comparar el cambio entre los valores originales y normalizados en una gráfica cuantil-cuantil.
+
+
+```{r}
+# Matriz para el layout
+x <- c(1, 2) # dos gráficos diferentes
+m <- matrix(x, ncol = 2)
+nf <- layout(m)
+
+Plot1 <- ggplot(healthy, aes(sample = chol)) + 
+  stat_qq(alpha = 0.5) + 
+  stat_qq_line(color = "red") + 
+  labs(title = "Colesterol original", x = "Teoréticos", y = "Muestra")
+
+Plot2 <- ggplot(healthy, aes(sample = NormChol)) + 
+  stat_qq(alpha = 0.5) + 
+  stat_qq_line(color = "blue") + 
+  labs(title = "Colesterol normalizado", x = "Teoréticos", y = "Muestra")
+
+Plots <- list(Plot1,Plot2)
+layout <- rbind(c(1,2))
+grid.arrange(grobs = Plots,layout_matrix = layout)
+```
+
+Los resultados anteriores nos indican que si bien hubo una mejora al normalizar los datos, no fue suficiente para que estos alcanzaran una distribución normal. Este hecho influye profundamente en la decisión de cuál test debe usarse para analizar la distribución de la varianza, ya que, como uno de los conjuntos que se comparan no son de tipo normal, es recomendable recurrir a un test que compare la mediana de la varianza. Por lo tanto, decidí usar el test de **Fligner-Killeen**, ya que es un test no paramétrico que compara las varianzas basándose en la mediana y es una alternativa cuando no se cumple la condición de normalidad en las muestras.
+
+```{r}
+# Comprobar la varianza constante entre grupos (homocedasticidad)
+fligner.test(chol~chd69, WCGS)
+```
+
+El test de Fligner-Killeen considera como hipótesis nula que la varianza es igual entre los grupos y como hipótesis alternativa que no lo es. El p-value que obtuve es mayor que 0.05, por lo que la varianza de la altura entre mujeres y hombres es igual y por lo tanto se cumple la homocedasticidad. Para analizar la diferencia de la varianza entre ambos conjuntos, decidí usar el test **Wilcoxon rank-sum**, el cual es un test no paramétrico que contrasta si dos muestras proceden de poblaciones equidistribuidas. Elegí esta prueba ya que los datos cumplen con todas sus condiciones:
+
+    - Los datos son independientes.
+    - Los datos del nivel de colesterol son ordinales.
+    - El test acepta muestras que no se distribuyen de forma normal.
+    - Se cumple con la homocedasticidad.
+
+Se empleará la función *wilcox_test()* del paquete coin, ya que los tamaños muestrales son mayores de 20.
+
+```{r}
+# Importar la libreria requerida para realizar el analisis de la varianza
+library(coin)
+```
+
+```{r}
+# Es necesario crear un dataframe para realizar el test
+wilcox_dt <- data.frame(chol = WCGS$chol, chd69 = WCGS$chd69)
+
+# Codificar los valores del genero en el nuevo dataframe
+wilcox_dt$chd69 <- gsub("Ausencia", "N", wilcox_dt$chd69)
+wilcox_dt$chd69 <- gsub("Presencia", "S", wilcox_dt$chd69)
+
+# Aplicar el test Wilcoxon rank-sum en los datos
+wilcox_test(chol ~ as.factor(chd69), data = wilcox_dt, conf.int=0.95)
+```
+
+Como podemos observar el p-valor de esta prueba es menor a 0.05, por lo que si existe una diferencia significativa en el nivel de colesterol entre pacientes sanos y enfermos.
 
 # Regresion Lineal
 
